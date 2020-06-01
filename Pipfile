@@ -1,0 +1,20 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+requirements-txt = "*"
+python-dateutil = "==2.6.0"
+forms = "*"
+logging = "*"
+Babel = "*"
+Flask-Moment = "*"
+Flask-WTF = "*"
+Flask-SQLAlchemy = "*"
+pandas = "*"
+
+[requires]
+python_version = "3.7"
