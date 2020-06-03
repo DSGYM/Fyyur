@@ -14,6 +14,7 @@ from flask_wtf import Form
 from sqlalchemy import inspect
 import sys
 from forms import *
+from flask_migrate import Migrate
 
 # ----------------------------------------------------------------------------#
 # App Config.
@@ -24,6 +25,8 @@ moment = Moment(app)
 app.config.from_object("config")
 db = SQLAlchemy(app)
 
+migrate = Migrate(app, db)
+
 # TODO: connect to a local postgresql database
 
 # ----------------------------------------------------------------------------#
@@ -32,7 +35,7 @@ db = SQLAlchemy(app)
 
 
 class Venue(db.Model):
-    __tablename__ = "Venue"
+    __tablename__ = "venue"
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String)
@@ -49,16 +52,18 @@ class Venue(db.Model):
 
 
 class Artist(db.Model):
-    __tablename__ = "Artist"
+    __tablename__ = "artist"
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String)
     city = db.Column(db.String(120))
     state = db.Column(db.String(120))
     phone = db.Column(db.String(120))
-    genres = db.Column(db.String(120))
+    genres = db.Column(db.ARRAY(db.String(120)))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
+    seeking_talent = db.Column(db.Boolean, default=False, nullable=False)
+    seeking_description = db.Column(db.String(500))
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
@@ -84,7 +89,7 @@ app.jinja_env.filters["datetime"] = format_datetime
 # ----------------------------------------------------------------------------#
 # Controllers.
 # ----------------------------------------------------------------------------#
-db.create_all()  # Das fliegt raus bei Migrations
+# db.create_all()  # Das fliegt raus bei Migrations
 
 
 def object_as_dict(obj):
@@ -310,12 +315,19 @@ def delete_venue(venue_id):
 @app.route("/artists")
 def artists():
     # TODO: replace with real data returned from querying the database
-    data = [
-        {"id": 4, "name": "Guns N Petals",},
-        {"id": 5, "name": "Matt Quevedo",},
-        {"id": 6, "name": "The Wild Sax Band",},
-    ]
-    return render_template("pages/artists.html", artists=data)
+
+    data = db.session.query(Artist)
+    result = []
+    for item in data:
+        d = object_as_dict(item)
+        result.append(d)
+
+    artists = []
+    for item in result:
+        item = {k: item[k] for k in ("id", "name")}
+        artists.append(item)
+
+    return render_template("pages/artists.html", artists=artists)
 
 
 @app.route("/artists/search", methods=["POST"])
@@ -323,9 +335,20 @@ def search_artists():
     # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
     # seach for "A" should return "Guns N Petals", "Matt Quevado", and "The Wild Sax Band".
     # search for "band" should return "The Wild Sax Band".
+    data = db.session.query(Artist)
+    result = []
+    for item in data:
+        d = object_as_dict(item)
+        result.append(d)
+
+    artists = []
+    for item in result:
+        item = {k: item[k] for k in ("id", "name")}
+        artists.append(item)
+
     response = {
-        "count": 1,
-        "data": [{"id": 4, "name": "Guns N Petals", "num_upcoming_shows": 0,}],
+        "count": len(artists),
+        "data": artists,
     }
     return render_template(
         "pages/search_artists.html",
@@ -491,12 +514,42 @@ def create_artist_form():
 
 @app.route("/artists/create", methods=["POST"])
 def create_artist_submission():
+
+    name = request.form["name"]
+    city = request.form["city"]
+    state = request.form["state"]
+    phone = request.form["phone"]
+    genres = request.form["genres"]
+    facebook_link = request.form["facebook_link"]
+
+    try:
+        artist = Artist(
+            name=name,
+            city=city,
+            state=state,
+            phone=phone,
+            genres=genres,
+            facebook_link=facebook_link,
+        )
+        db.session.add(artist)
+        db.session.commit()
+        flash("Artist " + request.form["name"] + " was successfully listed!")
+    except:
+        flash(
+            "An error occurred. Artist "
+            + request.form["name"]
+            + " could not be listed."
+        )
+        db.session.rollback()
+        print(sys.exc_info())
+    finally:
+        db.session.close()
+
     # called upon submitting the new artist listing form
     # TODO: insert form data as a new Venue record in the db, instead
     # TODO: modify data to be the data object returned from db insertion
 
     # on successful db insert, flash success
-    flash("Artist " + request.form["name"] + " was successfully listed!")
     # TODO: on unsuccessful db insert, flash an error instead.
     # e.g., flash('An error occurred. Artist ' + data.name + ' could not be listed.')
     return render_template("pages/home.html")
