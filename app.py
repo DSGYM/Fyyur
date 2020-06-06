@@ -44,9 +44,14 @@ class Venue(db.Model):
     address = db.Column(db.String(120))
     phone = db.Column(db.String(120))
     image_link = db.Column(db.String(500))
-    genres = db.Column(db.String(500))
-    imagelink = db.Column(db.String(500))
+    genres = db.Column(db.ARRAY(db.String(120)))
+    website = db.Column(db.String(120))
     facebook_link = db.Column(db.String(120))
+    seeking_talent = db.Column(db.String(120))
+    seeking_description = db.Column(db.String(500))
+
+    def __repr__(self):
+        return f"<Venue {self.name}>"
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
@@ -62,13 +67,29 @@ class Artist(db.Model):
     genres = db.Column(db.ARRAY(db.String(120)))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
-    seeking_talent = db.Column(db.Boolean, default=False, nullable=False)
+    seeking_venue = db.Column(db.String(120))
     seeking_description = db.Column(db.String(500))
+
+    def __repr__(self):
+        return f"<Artist {self.name}>"
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
 
 # TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
+
+
+class Show(db.Model):
+    __tablename__ = "show"
+    id = db.Column(db.Integer, primary_key=True)
+    start_time = db.Column(db.DateTime())
+    artist_id = db.Column(db.Integer, db.ForeignKey("artist.id"))
+    artist = db.relationship(
+        "Artist", backref=db.backref("shows", cascade="all,delete")
+    )
+    venue_id = db.Column(db.Integer, db.ForeignKey("venue.id"))
+    venue = db.relationship("Venue", backref=db.backref("shows", cascade="all,delete"))
+
 
 # ----------------------------------------------------------------------------#
 # Filters.
@@ -266,7 +287,10 @@ def create_venue_submission():
     address = request.form["address"]
     phone = request.form["phone"]
     genres = request.form["genres"]
+    website = request.form["website"]
     facebook_link = request.form["facebook_link"]
+    seeking_talent = request.form["seeking_talent"]
+    seeking_description = request.form["seeking_description"]
 
     try:
         venue = Venue(
@@ -276,7 +300,10 @@ def create_venue_submission():
             address=address,
             phone=phone,
             genres=genres,
+            website=website,
             facebook_link=facebook_link,
+            seeking_talent=seeking_talent,
+            seeking_description=seeking_description,
         )
         db.session.add(venue)
         db.session.commit()
@@ -564,6 +591,33 @@ def shows():
     # displays list of shows at /shows
     # TODO: replace with real venues data.
     #       num_shows should be aggregated based on number of upcoming shows per venue.
+    data = (
+        db.session.query(
+            Venue.id,
+            Venue.name,
+            Artist.id,
+            Artist.name,
+            Artist.image_link,
+            Show.start_time,
+        )
+        .join(Venue, Venue.id == Show.venue_id)
+        .join(Artist, Artist.id == Show.artist_id)
+    )
+
+    result = []
+    for item in data:
+        d = {
+            "venue_id": item[0],
+            "venue_name": item[1],
+            "artist_id": item[2],
+            "artist_name": item[3],
+            "artist_image_link": item[4],
+            "start_time": item[5].strftime("%y-%m-%dT%H:%M:%S%z"),
+        }
+        result.append(d)
+
+    print(result)
+
     data = [
         {
             "venue_id": 1,
@@ -606,7 +660,7 @@ def shows():
             "start_time": "2035-04-15T20:00:00.000Z",
         },
     ]
-    return render_template("pages/shows.html", shows=data)
+    return render_template("pages/shows.html", shows=result)
 
 
 @app.route("/shows/create")
@@ -620,6 +674,26 @@ def create_shows():
 def create_show_submission():
     # called to create new shows in the db, upon submitting new show listing form
     # TODO: insert form data as a new Show record in the db, instead
+
+    venue_id = request.form["venue_id"]
+    artist_id = request.form["artist_id"]
+    start_time = request.form["start_time"]
+
+    try:
+        show = Show(artist_id=artist_id, venue_id=venue_id, start_time=start_time)
+        db.session.add(show)
+        db.session.commit()
+        flash("show on " + request.form["start_time"] + " was successfully listed!")
+    except:
+        flash(
+            "An error occurred. Show on "
+            + request.form["start_time"]
+            + " could not be listed."
+        )
+        db.session.rollback()
+        print(sys.exc_info())
+    finally:
+        db.session.close()
 
     # on successful db insert, flash success
     flash("Show was successfully listed!")
