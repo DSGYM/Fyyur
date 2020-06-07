@@ -15,6 +15,7 @@ from sqlalchemy import inspect
 import sys
 from forms import *
 from flask_migrate import Migrate
+import datetime
 
 # ----------------------------------------------------------------------------#
 # App Config.
@@ -43,7 +44,10 @@ class Venue(db.Model):
     state = db.Column(db.String(120))
     address = db.Column(db.String(120))
     phone = db.Column(db.String(120))
-    image_link = db.Column(db.String(500))
+    image_link = db.Column(
+        db.String(500),
+        default="https://images.unsplash.com/photo-1485686531765-ba63b07845a7?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=747&q=80",
+    )
     genres = db.Column(db.ARRAY(db.String(120)))
     website = db.Column(db.String(120))
     facebook_link = db.Column(db.String(120))
@@ -65,7 +69,11 @@ class Artist(db.Model):
     state = db.Column(db.String(120))
     phone = db.Column(db.String(120))
     genres = db.Column(db.ARRAY(db.String(120)))
-    image_link = db.Column(db.String(500))
+    website = db.Column(db.String(120))
+    image_link = db.Column(
+        db.String(500),
+        default="https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80",
+    )
     facebook_link = db.Column(db.String(120))
     seeking_venue = db.Column(db.String(120))
     seeking_description = db.Column(db.String(500))
@@ -164,10 +172,28 @@ def search_venues():
     # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
     # seach for Hop should return "The Musical Hop".
     # search for "Music" should return "The Musical Hop" and "Park Square Live Music & Coffee"
-    response = {
-        "count": 1,
-        "data": [{"id": 2, "name": "The Dueling Pianos Bar", "num_upcoming_shows": 0,}],
-    }
+    search_term = request.form.get("search_term").lower()
+
+    data = db.session.query(Venue)
+    result = []
+    for item in data:
+        d = object_as_dict(item)
+        result.append(d)
+
+    venues = []
+    for item in result:
+        item = {k: item[k] for k in ("id", "name")}
+        venues.append(item)
+
+    subset = [item for item in venues if search_term in item["name"].lower()]
+
+    # response = {
+    #     "count": 1,
+    #     "data": [{"id": 2, "name": "The Dueling Pianos Bar", "num_upcoming_shows": 0,}],
+    # }
+
+    response = {"count": len(subset), "data": subset}
+
     return render_template(
         "pages/search_venues.html",
         results=response,
@@ -179,6 +205,79 @@ def search_venues():
 def show_venue(venue_id):
     # shows the venue page with the given venue_id
     # TODO: replace with real venue data from the venues table, using venue_id
+
+    data = (
+        db.session.query(
+            Venue.id,  # 0
+            Venue.name,  # 1
+            Venue.genres,  # 2
+            Venue.address,  # 3
+            Venue.city,  # 4
+            Venue.state,  # 5
+            Venue.phone,  # 6
+            Venue.website,  # 7
+            Venue.facebook_link,  # 8
+            Venue.seeking_talent,  # 9
+            Venue.seeking_description,  # 10
+            Venue.image_link,  # 11
+            Artist.id,  # 12
+            Artist.name,  # 13
+            Artist.image_link,  # 14
+            Show.start_time,  # 15
+        )
+        .join(Artist, Artist.id == Show.artist_id)
+        .join(Venue, Venue.id == Show.venue_id)
+        .filter_by(id=venue_id)
+    )
+
+    now = datetime.datetime.now()
+
+    shows = []
+
+    for item in data:
+        _dict = {
+            "artist_id": item[12],
+            "artist_name": item[13],
+            "artist_image_link": item[14],
+            "start_time": item[15],
+        }
+        shows.append(_dict)
+
+    upcoming_shows = []
+    past_shows = []
+
+    for show in shows:
+        if show["start_time"] > now:
+            show["start_time"] = show["start_time"].strftime("%Y-%m-%dT%H:%M:%S%z")
+            upcoming_shows.append(show)
+        else:
+            show["start_time"] = show["start_time"].strftime("%Y-%m-%dT%H:%M:%S%z")
+            past_shows.append(show)
+
+    result = []
+    for item in data:
+        _dict = {
+            "id": item[0],
+            "name": item[1],
+            "genres": item[2],
+            "address": item[3],
+            "city": item[4],
+            "state": item[5],
+            "phone": item[6],
+            "website": item[7],
+            "facebook_link": item[8],
+            "seeking_talent": item[9],
+            "seeking_description": item[10],
+            "image_link": item[11],
+            "past_shows": past_shows,
+            "upcoming_shows": upcoming_shows,
+            "past_shows_count": len(past_shows),
+            "upcoming_shows_count": len(upcoming_shows),
+        }
+        result.append(_dict)
+
+    result = result[0]
+
     data1 = {
         "id": 1,
         "name": "The Musical Hop",
@@ -265,7 +364,7 @@ def show_venue(venue_id):
         "upcoming_shows_count": 1,
     }
     data = list(filter(lambda d: d["id"] == venue_id, [data1, data2, data3]))[0]
-    return render_template("pages/show_venue.html", venue=data)
+    return render_template("pages/show_venue.html", venue=result)
 
 
 #  Create Venue
@@ -362,6 +461,8 @@ def search_artists():
     # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
     # seach for "A" should return "Guns N Petals", "Matt Quevado", and "The Wild Sax Band".
     # search for "band" should return "The Wild Sax Band".
+    search_term = request.form.get("search_term").lower()
+
     data = db.session.query(Artist)
     result = []
     for item in data:
@@ -373,9 +474,11 @@ def search_artists():
         item = {k: item[k] for k in ("id", "name")}
         artists.append(item)
 
+    subset = [item for item in artists if search_term in item["name"].lower()]
+
     response = {
-        "count": len(artists),
-        "data": artists,
+        "count": len(subset),
+        "data": subset,
     }
     return render_template(
         "pages/search_artists.html",
@@ -388,6 +491,80 @@ def search_artists():
 def show_artist(artist_id):
     # shows the venue page with the given venue_id
     # TODO: replace with real venue data from the venues table, using venue_id
+
+    data = (
+        db.session.query(
+            Artist.id,  # 0
+            Artist.name,  # 1
+            Artist.genres,  # 2
+            Artist.city,  # 3
+            Artist.state,  # 4
+            Artist.phone,  # 5
+            Artist.website,  # 6
+            Artist.facebook_link,  # 7
+            Artist.seeking_venue,  # 8
+            Artist.seeking_description,  # 9
+            Artist.image_link,  # 10
+            Venue.id,  # 11
+            Venue.name,  # 12
+            Venue.image_link,  # 13
+            Show.start_time,  # 14
+        )
+        .filter(Artist.id == artist_id)
+        .outerjoin(Show, Show.artist_id == Artist.id)
+        .outerjoin(Venue, Venue.id == Show.venue_id)
+    )
+
+    now = datetime.datetime.now()
+
+    shows = []
+
+    for item in data:
+        _dict = {
+            "venue_id": item[11],
+            "venue_name": item[12],
+            "venue_image_link": item[13],
+            "start_time": item[14],
+        }
+        shows.append(_dict)
+
+    upcoming_shows = []
+    past_shows = []
+
+    print
+
+    for show in shows:
+        if show["venue_id"] is not None:
+            if show["start_time"] > now:
+                show["start_time"] = show["start_time"].strftime("%Y-%m-%dT%H:%M:%S%z")
+                upcoming_shows.append(show)
+            else:
+                show["start_time"] = show["start_time"].strftime("%Y-%m-%dT%H:%M:%S%z")
+                past_shows.append(show)
+
+    result = []
+    for item in data:
+        _dict = {
+            "id": item[0],
+            "name": item[1],
+            "genres": item[2],
+            "city": item[3],
+            "state": item[4],
+            "phone": item[5],
+            "website": item[6],
+            "facebook_link": item[7],
+            "seeking_venue": item[8],
+            "seeking_description": item[9],
+            "image_link": item[10],
+            "past_shows": past_shows,
+            "upcoming_shows": upcoming_shows,
+            "past_shows_count": len(past_shows),
+            "upcoming_shows_count": len(upcoming_shows),
+        }
+        result.append(_dict)
+
+    result = result[0]
+
     data1 = {
         "id": 4,
         "name": "Guns N Petals",
@@ -467,8 +644,8 @@ def show_artist(artist_id):
         "past_shows_count": 0,
         "upcoming_shows_count": 3,
     }
-    data = list(filter(lambda d: d["id"] == artist_id, [data1, data2, data3]))[0]
-    return render_template("pages/show_artist.html", artist=data)
+    # data = list(filter(lambda d: d["id"] == artist_id, [data1, data2, data3]))[0]
+    return render_template("pages/show_artist.html", artist=result)
 
 
 #  Update
@@ -548,6 +725,10 @@ def create_artist_submission():
     phone = request.form["phone"]
     genres = request.form["genres"]
     facebook_link = request.form["facebook_link"]
+    image_link = request.form["image_link"]
+    website = request.form["website"]
+    seeking_venue = request.form["seeking_venue"]
+    seeking_description = request.form["seeking_description"]
 
     try:
         artist = Artist(
@@ -557,6 +738,10 @@ def create_artist_submission():
             phone=phone,
             genres=genres,
             facebook_link=facebook_link,
+            image_link=image_link,
+            website=website,
+            seeking_venue=seeking_venue,
+            seeking_description=seeking_description,
         )
         db.session.add(artist)
         db.session.commit()
@@ -612,54 +797,54 @@ def shows():
             "artist_id": item[2],
             "artist_name": item[3],
             "artist_image_link": item[4],
-            "start_time": item[5].strftime("%y-%m-%dT%H:%M:%S%z"),
+            "start_time": item[5].strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
         result.append(d)
 
     print(result)
 
-    data = [
-        {
-            "venue_id": 1,
-            "venue_name": "The Musical Hop",
-            "artist_id": 4,
-            "artist_name": "Guns N Petals",
-            "artist_image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80",
-            "start_time": "2019-05-21T21:30:00.000Z",
-        },
-        {
-            "venue_id": 3,
-            "venue_name": "Park Square Live Music & Coffee",
-            "artist_id": 5,
-            "artist_name": "Matt Quevedo",
-            "artist_image_link": "https://images.unsplash.com/photo-1495223153807-b916f75de8c5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=334&q=80",
-            "start_time": "2019-06-15T23:00:00.000Z",
-        },
-        {
-            "venue_id": 3,
-            "venue_name": "Park Square Live Music & Coffee",
-            "artist_id": 6,
-            "artist_name": "The Wild Sax Band",
-            "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-            "start_time": "2035-04-01T20:00:00.000Z",
-        },
-        {
-            "venue_id": 3,
-            "venue_name": "Park Square Live Music & Coffee",
-            "artist_id": 6,
-            "artist_name": "The Wild Sax Band",
-            "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-            "start_time": "2035-04-08T20:00:00.000Z",
-        },
-        {
-            "venue_id": 3,
-            "venue_name": "Park Square Live Music & Coffee",
-            "artist_id": 6,
-            "artist_name": "The Wild Sax Band",
-            "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-            "start_time": "2035-04-15T20:00:00.000Z",
-        },
-    ]
+    # data = [
+    #     {
+    #         "venue_id": 1,
+    #         "venue_name": "The Musical Hop",
+    #         "artist_id": 4,
+    #         "artist_name": "Guns N Petals",
+    #         "artist_image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80",
+    #         "start_time": "2019-05-21T21:30:00.000Z",
+    #     },
+    #     {
+    #         "venue_id": 3,
+    #         "venue_name": "Park Square Live Music & Coffee",
+    #         "artist_id": 5,
+    #         "artist_name": "Matt Quevedo",
+    #         "artist_image_link": "https://images.unsplash.com/photo-1495223153807-b916f75de8c5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=334&q=80",
+    #         "start_time": "2019-06-15T23:00:00.000Z",
+    #     },
+    #     {
+    #         "venue_id": 3,
+    #         "venue_name": "Park Square Live Music & Coffee",
+    #         "artist_id": 6,
+    #         "artist_name": "The Wild Sax Band",
+    #         "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
+    #         "start_time": "2035-04-01T20:00:00.000Z",
+    #     },
+    #     {
+    #         "venue_id": 3,
+    #         "venue_name": "Park Square Live Music & Coffee",
+    #         "artist_id": 6,
+    #         "artist_name": "The Wild Sax Band",
+    #         "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
+    #         "start_time": "2035-04-08T20:00:00.000Z",
+    #     },
+    #     {
+    #         "venue_id": 3,
+    #         "venue_name": "Park Square Live Music & Coffee",
+    #         "artist_id": 6,
+    #         "artist_name": "The Wild Sax Band",
+    #         "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
+    #         "start_time": "2035-04-15T20:00:00.000Z",
+    #     },
+    # ]
     return render_template("pages/shows.html", shows=result)
 
 
@@ -683,7 +868,6 @@ def create_show_submission():
         show = Show(artist_id=artist_id, venue_id=venue_id, start_time=start_time)
         db.session.add(show)
         db.session.commit()
-        flash("show on " + request.form["start_time"] + " was successfully listed!")
     except:
         flash(
             "An error occurred. Show on "
