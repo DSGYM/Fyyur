@@ -82,7 +82,7 @@ class VenueForm(Form):
     address = StringField("address", validators=[DataRequired()])
     phone = StringField("phone")
     website = StringField("website")
-    seeking_talent = BooleanField("seeking_talent", validators=[DataRequired()])
+    seeking_talent = BooleanField("seeking_talent")
     seeking_description = TextAreaField("seeking_description")
     genres = SelectMultipleField(
         # TODO implement enum restriction
@@ -211,7 +211,7 @@ class ArtistForm(Form):
         "facebook_link",
         validators=[URL()],
     )
-    seeking_venue = BooleanField("seeking_venue", validators=[DataRequired()])
+    seeking_venue = BooleanField("seeking_venue")
     seeking_description = TextAreaField("seeking_description")
 
 
