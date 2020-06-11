@@ -430,7 +430,6 @@ def search_artists():
 @app.route("/artists/<int:artist_id>")
 def show_artist(artist_id):
     # shows the venue page with the given venue_id
-    # TODO: replace with real venue data from the venues table, using venue_id
 
     data = (
         db.session.query(
